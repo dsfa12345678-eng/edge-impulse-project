@@ -1,3 +1,15 @@
 *.eim
-result.jpg
+
 __pycache__/
+*.pyc
+*.pyo
+
+venv/
+env/
+
+test_images/*.jpg
+
+ .DS_Store
+Thumbs.db
+
+*.log
