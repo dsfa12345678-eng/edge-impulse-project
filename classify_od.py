@@ -2,6 +2,7 @@
 import sys
 import cv2
 import numpy as np
+import os
 from edge_impulse_linux.runner import ImpulseRunner
 
 def main():
@@ -11,64 +12,48 @@ def main():
 
     model_path = sys.argv[1]
     image_path = sys.argv[2]
-
+    
     runner = ImpulseRunner(model_path)
     try:
         model_info = runner.init()
-        # --- 修正：正確讀取 model_type 的位置 ---
-        model_params = model_info['model_parameters']
-        print(f"模型類型: {model_params.get('model_type', 'unknown')}")
+        width = model_info['model_parameters']['image_input_width']
+        height = model_info['model_parameters']['image_input_height']
+        actual_space = runner._input_shm['array'].shape[0]
         
-        width = model_params['image_input_width']
-        height = model_params['image_input_height']
+        print(f"模型載入成功！")
+        print(f"專案規格: {width}x{height} px, 單通道(Grayscale)")
+        print(f"記憶體配置: {actual_space} bytes")
 
         img = cv2.imread(image_path)
         if img is None:
             print("錯誤: 無法讀取圖片")
             sys.exit(1)
 
-        # 1. 轉灰階 (根據之前的錯誤訊息，這是必須的)
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-        
-        # 2. 縮放
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         img_resized = cv2.resize(img_gray, (width, height))
         
-        # 3. 正規化 (分類模型通常需要)
-        img_float = img_resized.astype('float32') / 255.0
-        
-        # 4. 展平
-        img_processed = img_float.flatten()
+        features = img_resized.astype('float32') / 255.0
+        features = features.flatten()
 
-        # 5. 推論
-        result = runner.classify(img_processed)
+        result = runner.classify(features)
 
-        # 6. 顯示分類結果
         if 'classification' in result['result']:
-            print("\n=== 分類結果 ===")
-            max_label = ""
-            max_score = 0
+            scores = result['result']['classification']
+            max_label = max(scores, key=scores.get)
             
-            # 列出所有標籤的分數
-            for label, score in result['result']['classification'].items():
-                print(f"{label}: {score:.2f}")
-                if score > max_score:
-                    max_score = score
-                    max_label = label
+            # 將「分數」改為「信心度」
+            print(f"\n[推論結果] 類別: {max_label}, 信心度: {scores[max_label]:.2f}")
             
-            # 將最高分的結果寫在圖片上 (為了看得清楚，字體加大)
-            label_text = f"{max_label}: {max_score:.2f}"
+            h, w = img.shape[:2]
+            font_scale = max(w, h) / 1000.0
+            thickness = max(2, int(max(w, h) / 500))
+            # 圖片上的標籤也維持專業簡潔
+            cv2.putText(img, f"{max_label}: {scores[max_label]:.2f}", (int(w*0.05), int(h*0.1)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), thickness)
             
-            # 使用紅色文字 (0, 0, 255) 以便在灰階/彩色圖上對比
-            cv2.putText(img, label_text, (10, 50), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 2)
-            
-            output_file = 'result.jpg'
-            cv2.imwrite(output_file, img)
-            print(f"\n[成功] 預測為 [{max_label}]，結果圖片已存至 {output_file}")
-
-        elif 'bounding_boxes' in result['result']:
-            print("注意：這是一個物件偵測結果，但您的模型似乎是分類模型。")
+            os.makedirs("results", exist_ok=True)
+            cv2.imwrite("results/result.jpg", img)
+            print(f"結果圖片已存至: results/result.jpg")
 
     finally:
         runner.stop()

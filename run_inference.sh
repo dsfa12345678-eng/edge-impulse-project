@@ -2,7 +2,7 @@
 # run_inference.sh - 自動化推論腳本
 
 # 1. 設定變數 (這裡設定您的預設檔案)
-MODEL_PATH="./model.eim"
+MODEL_PATH="./models/model.eim"
 SCRIPT_PATH="classify_od.py"
 
 # 如果使用者有提供圖片路徑就用使用者的，否則使用預設的
