@@ -12,51 +12,70 @@ def main():
 
     model_path = sys.argv[1]
     image_path = sys.argv[2]
-    
+
+    # 初始化 Runner
     runner = ImpulseRunner(model_path)
     try:
         model_info = runner.init()
+        # 動態從模型中取得要求的長寬
         width = model_info['model_parameters']['image_input_width']
         height = model_info['model_parameters']['image_input_height']
-        actual_space = runner._input_shm['array'].shape[0]
         
-        print(f"模型載入成功！")
+        print(f"==================================================")
+        print(f"🚀 啟動 Edge AI 本地推論引擎...")
         print(f"專案規格: {width}x{height} px, 單通道(Grayscale)")
-        print(f"記憶體配置: {actual_space} bytes")
+        print(f"==================================================")
 
+        # 1. 讀取原始圖片
         img = cv2.imread(image_path)
         if img is None:
-            print("錯誤: 無法讀取圖片")
+            print(f"❌ 錯誤: 無法讀取圖片路徑: {image_path}")
             sys.exit(1)
 
+        # 2. 影像預處理
+        # 轉為灰階 (模型要求單通道)
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        img_resized = cv2.resize(img_gray, (width, height))
         
-        features = img_resized.astype('float32') / 255.0
-        features = features.flatten()
+        # 縮放到模型要求的尺寸 (如 96x96)
+        img_resized = cv2.resize(img_gray, (width, height))
 
+        # ⭐ 關鍵修正點：
+        # 對於 int8 量化模型，傳入 0-255 的原始像素列表 (int) 即可。
+        # 不要執行 / 255.0 的歸一化，SDK 內部會處理。
+        features = img_resized.flatten().tolist()
+
+        # 3. 執行推論
         result = runner.classify(features)
 
+        # 4. 處理與顯示結果
         if 'classification' in result['result']:
             scores = result['result']['classification']
+            # 取得分數最高的類別
             max_label = max(scores, key=scores.get)
-            
-            # 將「分數」改為「信心度」
-            print(f"\n[推論結果] 類別: {max_label}, 信心度: {scores[max_label]:.2f}")
-            
-            h, w = img.shape[:2]
-            font_scale = max(w, h) / 1000.0
-            thickness = max(2, int(max(w, h) / 500))
-            # 圖片上的標籤也維持專業簡潔
-            cv2.putText(img, f"{max_label}: {scores[max_label]:.2f}", (int(w*0.05), int(h*0.1)), 
-                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), thickness)
-            
-            os.makedirs("results", exist_ok=True)
-            cv2.imwrite("results/result.jpg", img)
-            print(f"結果圖片已存至: results/result.jpg")
+            confidence = scores[max_label]
 
+            print(f"📸 測試圖片: {os.path.basename(image_path)}")
+            print(f"🎯 推論結果: {max_label}")
+            print(f"📈 信心指數: {confidence:.2f}")
+            print(f"--------------------------------------------------")
+
+            # 在原圖上繪製結果 (用於視覺化報告)
+            h, w = img.shape[:2]
+            label_text = f"{max_label}: {confidence:.2f}"
+            cv2.putText(img, label_text, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 
+                        1.2, (0, 0, 255), 3)
+
+            # 存檔
+            os.makedirs("results", exist_ok=True)
+            output_path = "results/result.jpg"
+            cv2.imwrite(output_path, img)
+            print(f"✅ 結果圖片已存至: {output_path}")
+
+    except Exception as e:
+        print(f"❌ 發生異常: {e}")
     finally:
-        runner.stop()
+        if runner:
+            runner.stop()
 
 if __name__ == "__main__":
     main()
