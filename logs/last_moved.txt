@@ -1,0 +1,2 @@
+/home/ken_878/edge_impulse_demo/data/train/coffee/coffee_46.jpg
+/home/ken_878/edge_impulse_demo/data/train/coffee/coffee_47.jpg
